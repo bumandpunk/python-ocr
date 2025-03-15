@@ -275,11 +275,17 @@ class PDFInspectorApp:
         if file_path:
             data = []
             for idx, item in enumerate(self.detection_items):
-                measured = self.grid_frame.grid_slaves(row=idx+1, column=2)[0].get()
+                # 获取三个实测值输入框的值
+                measured1 = self.grid_frame.grid_slaves(row=idx+1, column=2)[0].get()
+                measured2 = self.grid_frame.grid_slaves(row=idx+1, column=3)[0].get()
+                measured3 = self.grid_frame.grid_slaves(row=idx+1, column=4)[0].get()
+                
                 data.append({
                     "序号": idx+1,
                     "检测值": item["text"],
-                    "实测值": measured
+                    "实测值1": measured1,
+                    "实测值2": measured2,
+                    "实测值3": measured3
                 })
             
             pd.DataFrame(data).to_excel(file_path, index=False)
