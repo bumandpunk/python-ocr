@@ -1,0 +1,45 @@
+# 开发环境
+venv/
+.env
+.env.local
+
+# 构建产物
+dist/
+build/
+*.spec
+*.exe
+*.app
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.log
+*.pot
+*.pyc
+.pytest_cache/
+site/
+*.egg-info/
+.installed.cfg
+
+# 测试文件
+.coverage
+htmlcov/
+.coverage.*
+
+# 数据文件
+*.pdf
+*.xlsx
+*.csv
+
+# IDE
+.ropeproject
