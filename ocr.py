@@ -69,7 +69,7 @@ class PDFInspectorApp:
         # 列标题
         headers = ["序号", "检测值", "实测值1", "实测值2", "实测值3"]
         for col, text in enumerate(headers):
-            ttk.Label(self.grid_frame, text=text, width=10, borderwidth=1, relief="solid",
+            ttk.Label(self.grid_frame, text=text, width=8, borderwidth=1, relief="solid",
                      anchor="center").grid(row=0, column=col, sticky="nsew")
 
         # 配置网格布局
@@ -96,15 +96,15 @@ class PDFInspectorApp:
         # 创建新行
         for row, item in enumerate(self.detection_items, start=1):
             # 序号
-            ttk.Label(self.grid_frame, text=str(row), width=10, anchor="center",
+            ttk.Label(self.grid_frame, text=str(row), width=3, anchor="center",
                      relief="solid").grid(row=row, column=0, sticky="nsew")
             
             # 检测值
-            ttk.Label(self.grid_frame, text=item["text"], width=10, anchor="center",
+            ttk.Label(self.grid_frame, text=item["text"], width=8, anchor="center",
                      relief="solid").grid(row=row, column=1, sticky="nsew")
             
             # 实测值（可编辑）
-            entry = ttk.Entry(self.grid_frame, width=10, justify="center")
+            entry = ttk.Entry(self.grid_frame, width=8, justify="center")
             entry.insert(0, item["measured"])
             entry.grid(row=row, column=2, sticky="nsew")
             entry.bind("<FocusIn>", lambda e, r=row-1: self.select_row(r))
@@ -113,7 +113,7 @@ class PDFInspectorApp:
             entry.bind("<Down>", self.handle_down)
             entry.bind("<Right>", self.handle_right)
 
-            entry = ttk.Entry(self.grid_frame, width=10, justify="center")
+            entry = ttk.Entry(self.grid_frame, width=8, justify="center")
             entry.insert(0, item["measured"])
             entry.grid(row=row, column=3, sticky="nsew")
             entry.bind("<FocusIn>", lambda e, r=row-1: self.select_row(r))
@@ -122,7 +122,7 @@ class PDFInspectorApp:
             entry.bind("<Down>", self.handle_down)
             entry.bind("<Right>", self.handle_right)
 
-            entry = ttk.Entry(self.grid_frame, width=10, justify="center")
+            entry = ttk.Entry(self.grid_frame, width=8, justify="center")
             entry.insert(0, item["measured"])
             entry.grid(row=row, column=4, sticky="nsew")
             entry.bind("<FocusIn>", lambda e, r=row-1: self.select_row(r))
