@@ -41,9 +41,10 @@ class PDFInspectorApp:
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # 左侧数据面板
-        left_panel = ttk.Frame(main_frame, width=400)
-        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, padx=5, pady=5)
+        # 左侧数据面板（设置最小宽度）
+        left_panel = ttk.Frame(main_frame, width=400)  # 初始宽度设为800像素
+        left_panel.pack_propagate(False)  # 禁止自动收缩
+        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, padx=2, pady=2)
 
         # 右侧PDF面板
         right_panel = ttk.Frame(main_frame)
@@ -62,24 +63,53 @@ class PDFInspectorApp:
         ttk.Button(toolbar, text="上传PDF", command=self.upload_pdf).pack(side=tk.LEFT)
         ttk.Button(toolbar, text="导出Excel", command=self.export_excel).pack(side=tk.LEFT, padx=5)
 
-        # 表格容器
-        self.grid_frame = ttk.Frame(parent)
-        self.grid_frame.pack(fill=tk.BOTH, expand=True)
+        # 调整容器布局
+        container = ttk.Frame(parent)
+        container.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)  # 增加内边距
 
-        # 列标题
+        # 创建Canvas和滚动条
+        self.data_canvas = tk.Canvas(container, bg='white')  # 重命名canvas避免冲突
+        scrollbar = ttk.Scrollbar(container, orient=tk.VERTICAL, command=self.data_canvas.yview)
+        
+        # 调整布局比例
+        self.data_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # 创建内部框架
+        self.grid_frame = ttk.Frame(self.data_canvas)
+        self.data_canvas.create_window((0, 0), window=self.grid_frame, anchor=tk.NW)
+
+        # 配置列宽（关键修改）
+        col_widths = [5, 8, 8, 8, 8]
         headers = ["序号", "检测值", "实测值1", "实测值2", "实测值3"]
-        for col, text in enumerate(headers):
-            ttk.Label(self.grid_frame, text=text, width=8, borderwidth=1, relief="solid",
-                     anchor="center").grid(row=0, column=col, sticky="nsew")
+        for col, (text, width) in enumerate(zip(headers, col_widths)):
+            ttk.Label(self.grid_frame, text=text, width=width, anchor="center",
+                     relief="solid").grid(row=0, column=col, sticky="nsew")
+            self.grid_frame.columnconfigure(col, minsize=width*10, weight=1)
 
-        # 配置网格布局
-        for i in range(5):
-            self.grid_frame.columnconfigure(i, weight=1)
+        # 绑定滚动事件（修改此处）
+        self.data_canvas.bind("<MouseWheel>", self._on_mousewheel)  # 直接绑定到canvas
+        self.data_canvas.bind("<Enter>", lambda e: self.data_canvas.focus_set())  # 鼠标进入时获取焦点
+        
+        self.grid_frame.bind("<Configure>", lambda e: self.data_canvas.configure(
+            scrollregion=self.data_canvas.bbox("all")
+        ))
+        self.data_canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # 绑定鼠标滚轮到数据canvas
+        self.data_canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+
+    def _on_mousewheel(self, event):
+        """处理鼠标滚轮滚动"""
+        self.data_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
     def create_pdf_viewer(self, parent):
         """创建PDF查看区域"""
-        self.canvas = tk.Canvas(parent, bg='white')
-        self.canvas.pack(fill=tk.BOTH, expand=True)
+        # 重命名为避免冲突
+        self.pdf_canvas = tk.Canvas(parent, bg='white')  # 修改变量名
+        self.pdf_canvas.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # 缩放控件保持不变...
 
         # 缩放控件
         self.zoom_scale = ttk.Scale(parent, from_=0.5, to=2.0, value=1.0,
@@ -94,43 +124,50 @@ class PDFInspectorApp:
                 widget.destroy()
 
         # 创建新行
+        entry_widths = [5, 8, 8, 8, 8]
         for row, item in enumerate(self.detection_items, start=1):
             # 序号
-            ttk.Label(self.grid_frame, text=str(row), width=3, anchor="center",
+            ttk.Label(self.grid_frame, text=str(row), width=entry_widths[0], anchor="center",
                      relief="solid").grid(row=row, column=0, sticky="nsew")
             
             # 检测值
-            ttk.Label(self.grid_frame, text=item["text"], width=8, anchor="center",
+            ttk.Label(self.grid_frame, text=item["text"], width=entry_widths[1], anchor="center",
                      relief="solid").grid(row=row, column=1, sticky="nsew")
             
-            # 实测值（可编辑）
-            entry = ttk.Entry(self.grid_frame, width=8, justify="center")
-            entry.insert(0, item["measured"])
-            entry.grid(row=row, column=2, sticky="nsew")
-            entry.bind("<FocusIn>", lambda e, r=row-1: self.select_row(r))
-            entry.bind("<Return>", self.handle_enter)
-            entry.bind("<Tab>", self.handle_tab)
-            entry.bind("<Down>", self.handle_down)
-            entry.bind("<Right>", self.handle_right)
+            # 实测值（统一创建方式）
+            for col in [2, 3, 4]:
+                entry = ttk.Entry(self.grid_frame, width=entry_widths[col], justify="center")
+                entry.insert(0, item["measured"])
+                entry.grid(row=row, column=col, sticky="nsew")
+                # 统一事件绑定
+                entry.bind("<FocusIn>", lambda e, r=row-1: self.select_row(r))
+                entry.bind("<Return>", self.handle_enter)
+                entry.bind("<Tab>", self.handle_tab)
+                entry.bind("<Down>", self.handle_down)
+                entry.bind("<Right>", self.handle_right)
 
-            entry = ttk.Entry(self.grid_frame, width=8, justify="center")
-            entry.insert(0, item["measured"])
-            entry.grid(row=row, column=3, sticky="nsew")
-            entry.bind("<FocusIn>", lambda e, r=row-1: self.select_row(r))
-            entry.bind("<Return>", self.handle_enter)
-            entry.bind("<Tab>", self.handle_tab)
-            entry.bind("<Down>", self.handle_down)
-            entry.bind("<Right>", self.handle_right)
+    def handle_enter(self, event):
+        """回车键处理：向下换行"""
+        current_row = self.get_current_row(event)
+        current_col = self.get_current_column(event)
+        
+        if current_row < len(self.detection_items) - 1:
+            self.focus_cell(current_row + 1, current_col)
 
-            entry = ttk.Entry(self.grid_frame, width=8, justify="center")
-            entry.insert(0, item["measured"])
-            entry.grid(row=row, column=4, sticky="nsew")
-            entry.bind("<FocusIn>", lambda e, r=row-1: self.select_row(r))
-            entry.bind("<Return>", self.handle_enter)
-            entry.bind("<Tab>", self.handle_tab)
-            entry.bind("<Down>", self.handle_down)
-            entry.bind("<Right>", self.handle_right)
-            
+    def handle_right(self, event):
+        """向右箭头处理：同行下一个单元格"""
+        current_row = self.get_current_row(event)
+        current_col = self.get_current_column(event)
+        
+        if current_col < 4:  # 允许移动到列4（索引从0开始）
+            self.focus_cell(current_row, current_col + 1)
+        elif current_row < len(self.detection_items) - 1:
+            self.focus_cell(current_row + 1, 2)  # 换行到下一行首列
+
+    def handle_tab(self, event):
+        """Tab键处理：与右方向键逻辑一致"""
+        self.handle_right(event)
+
     def select_row(self, row_index):
         """选择行并更新PDF显示"""
         self.selected_index = row_index
@@ -150,13 +187,26 @@ class PDFInspectorApp:
     def handle_enter(self, event):
         """回车键处理：向下换行"""
         current_row = self.get_current_row(event)
+        current_col = self.get_current_column(event)  # 新增获取当前列
+        
         if current_row < len(self.detection_items) - 1:
-            self.focus_cell(current_row + 1, 2)
+            self.focus_cell(current_row + 1, current_col)  # 保持当前列
 
     def handle_tab(self, event):
         """Tab键处理：向右换列（循环到下一行）"""
         current_row = self.get_current_row(event)
-        self.focus_cell(current_row + 1, 2)
+        current_col = self.get_current_column(event)
+        
+        if current_col < 4:
+            self.focus_cell(current_row, current_col + 1)
+        else:
+            self.focus_cell(current_row + 1, 2)  # 换行到下一行首列
+
+    def get_current_column(self, event):
+        """获取当前列号"""
+        widget = event.widget
+        info = widget.grid_info()
+        return int(info["column"])
 
     def handle_down(self, event):
         """向下箭头处理"""
@@ -165,7 +215,12 @@ class PDFInspectorApp:
     def handle_right(self, event):
         """向右箭头处理：同行下一个单元格"""
         current_row = self.get_current_row(event)
-        self.focus_cell(current_row, 2)  # 实测值已经是最后一列，保持原样
+        current_col = self.get_current_column(event)
+        
+        if current_col < 4:  # 最大列索引是4
+            self.focus_cell(current_row, current_col + 1)
+        else:
+            self.focus_cell(current_row + 1, 2)  # 换行到下一行首列
 
     def get_current_row(self, event):
         """获取当前行号"""
@@ -202,17 +257,20 @@ class PDFInspectorApp:
         try:
             for page_num in range(len(doc)):
                 page = doc.load_page(page_num)
-                blocks = page.get_text("blocks")
+                # 改用更精确的文本提取方式
+                blocks = page.get_text("words")  # 按单词切分而非文本块
                 
                 for block in blocks:
                     text = block[4].strip()
-                    if re.match(r'^\s*\d+\.\d{2}\s*$', text):
+                    # 精确匹配独立数值（允许前后有标点空格）
+                    if re.fullmatch(r'^\d+\.\d{2}$', text):
                         self.detection_items.append({
                             "page": page_num + 1,
                             "text": text,
                             "measured": "",
                             "coordinates": (block[0], block[1], block[2], block[3])
                         })
+                        print(f"匹配成功: {text}")
         finally:
             doc.close()
 
@@ -229,8 +287,11 @@ class PDFInspectorApp:
             img = Image.open(io.BytesIO(pix.tobytes()))
             img = self.add_annotations(img, page)
             
+            # 更新为pdf_canvas（关键修复）
             self.tk_img = ImageTk.PhotoImage(img)
-            self.canvas.create_image(0, 0, anchor=tk.NW, image=self.tk_img)
+            self.pdf_canvas.delete("all")  # 清空旧内容
+            self.pdf_canvas.config(scrollregion=(0, 0, img.width, img.height))  # 设置滚动区域
+            self.pdf_canvas.create_image(0, 0, anchor=tk.NW, image=self.tk_img)
         finally:
             doc.close()
 
