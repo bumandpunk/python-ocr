@@ -11,6 +11,9 @@ from PIL import Image, ImageTk, ImageDraw
 import io
 import re
 
+# 在文件顶部添加os模块导入
+import os  # 新增导入
+
 class PDFInspectorApp:
     def __init__(self, root):
         self.root = root
@@ -79,12 +82,17 @@ class PDFInspectorApp:
         self.grid_frame = ttk.Frame(self.data_canvas)
         self.data_canvas.create_window((0, 0), window=self.grid_frame, anchor=tk.NW)
 
+        # 新增文件头行（跨所有列）
+        self.filename_label = ttk.Label(self.grid_frame, text="当前文件: 未选择", anchor="center",
+                                       relief="solid", font=('Helvetica', 9, 'bold'))
+        self.filename_label.grid(row=0, column=0, columnspan=5, sticky="nsew")
+
         # 配置列宽（关键修改）
         col_widths = [5, 8, 8, 8, 8]
         headers = ["序号", "检测值", "实测值1", "实测值2", "实测值3"]
         for col, (text, width) in enumerate(zip(headers, col_widths)):
             ttk.Label(self.grid_frame, text=text, width=width, anchor="center",
-                     relief="solid").grid(row=0, column=col, sticky="nsew")
+                     relief="solid").grid(row=1, column=col, sticky="nsew")  # 行号改为1
             self.grid_frame.columnconfigure(col, minsize=width*10, weight=1)
 
         # 绑定滚动事件（修改此处）
@@ -248,6 +256,8 @@ class PDFInspectorApp:
             self.process_pdf()
             self.create_data_rows()
             self.show_page()
+            # 修改为仅显示文件名
+            self.filename_label.config(text=f"当前文件: {os.path.basename(self.pdf_path)}")  # 修改行
 
     def process_pdf(self):
         """处理PDF文件"""
@@ -334,13 +344,22 @@ class PDFInspectorApp:
             filetypes=[("Excel文件", "*.xlsx")]
         )
         if file_path:
-            data = []
+            data = [
+                {
+                    "序号": "文件名",
+                    # 修改为仅显示文件名
+                    "检测值": os.path.basename(self.pdf_path),  # 修改行
+                    "实测值1": "",
+                    "实测值2": "",
+                    "实测值3": ""
+                }
+            ]
             for idx, item in enumerate(self.detection_items):
-                # 获取三个实测值输入框的值
                 measured1 = self.grid_frame.grid_slaves(row=idx+1, column=2)[0].get()
                 measured2 = self.grid_frame.grid_slaves(row=idx+1, column=3)[0].get()
                 measured3 = self.grid_frame.grid_slaves(row=idx+1, column=4)[0].get()
                 
+                # 添加检测数据
                 data.append({
                     "序号": idx+1,
                     "检测值": item["text"],
