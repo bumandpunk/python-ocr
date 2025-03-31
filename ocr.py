@@ -10,9 +10,13 @@ import pandas as pd
 from PIL import Image, ImageTk, ImageDraw
 import io
 import re
-
+import json
 # 在文件顶部添加os模块导入
 import os  # 新增导入
+
+# 在文件顶部添加新依赖
+import requests
+import tempfile
 
 class PDFInspectorApp:
     def __init__(self, root):
@@ -45,25 +49,32 @@ class PDFInspectorApp:
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # 左侧数据面板（设置最小宽度）
-        left_panel = ttk.Frame(main_frame, width=400)  # 初始宽度设为800像素
+        left_panel = ttk.Frame(main_frame, width=630)  # 初始宽度设为800像素
         left_panel.pack_propagate(False)  # 禁止自动收缩
         left_panel.pack(side=tk.LEFT, fill=tk.BOTH, padx=2, pady=2)
 
         # 右侧PDF面板
         right_panel = ttk.Frame(main_frame)
-        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=2, pady=5)
 
         # 创建控件
         self.create_data_grid(left_panel)
         self.create_pdf_viewer(right_panel)
 
+    # 在 create_data_grid 方法中修改列配置
     def create_data_grid(self, parent):
         """创建增强型数据表格"""
-        # 工具栏
+        # 修改工具栏布局
         toolbar = ttk.Frame(parent)
         toolbar.pack(fill=tk.X, pady=5)
         
-        ttk.Button(toolbar, text="上传PDF", command=self.upload_pdf).pack(side=tk.LEFT)
+        # 添加零件号输入框
+        ttk.Label(toolbar, text="零件号:").pack(side=tk.LEFT)
+        self.part_number_entry = ttk.Entry(toolbar, width=15)
+        self.part_number_entry.pack(side=tk.LEFT, padx=5)
+        
+        # 替换原来的上传按钮为获取PDF按钮
+        ttk.Button(toolbar, text="获取PDF", command=self.fetch_pdf).pack(side=tk.LEFT)
         ttk.Button(toolbar, text="导出Excel", command=self.export_excel).pack(side=tk.LEFT, padx=5)
 
         # 调整容器布局
@@ -88,8 +99,8 @@ class PDFInspectorApp:
         self.filename_label.grid(row=0, column=0, columnspan=5, sticky="nsew")
 
         # 配置列宽（关键修改）
-        col_widths = [5, 8, 8, 8, 8]
-        headers = ["序号", "检测值", "实测值1", "实测值2", "实测值3"]
+        col_widths = [5, 8, 8, 8, 8, 8, 8, 8]
+        headers = ["序号", "检测值", "实测值1", "实测值2", "实测值3", "实测值4", "实测值5", "实测值6"]
         for col, (text, width) in enumerate(zip(headers, col_widths)):
             ttk.Label(self.grid_frame, text=text, width=width, anchor="center",
                      relief="solid").grid(row=1, column=col, sticky="nsew")  # 行号改为1
@@ -128,14 +139,14 @@ class PDFInspectorApp:
         """动态创建数据行"""
         # 清除旧数据
         for widget in self.grid_frame.grid_slaves():
-            if int(widget.grid_info()["row"]) > 0:
+            if int(widget.grid_info()["row"]) > 1:
                 widget.destroy()
 
         # 创建新行
-        entry_widths = [5, 8, 8, 8, 8]
-        for row, item in enumerate(self.detection_items, start=1):
+        entry_widths = [5, 8, 8, 8, 8, 8, 8, 8]
+        for row, item in enumerate(self.detection_items, start=2):
             # 序号
-            ttk.Label(self.grid_frame, text=str(row), width=entry_widths[0], anchor="center",
+            ttk.Label(self.grid_frame, text=str(row-1), width=entry_widths[0], anchor="center",
                      relief="solid").grid(row=row, column=0, sticky="nsew")
             
             # 检测值
@@ -143,7 +154,7 @@ class PDFInspectorApp:
                      relief="solid").grid(row=row, column=1, sticky="nsew")
             
             # 实测值（统一创建方式）
-            for col in [2, 3, 4]:
+            for col in [2, 3, 4, 5, 6, 7]:
                 entry = ttk.Entry(self.grid_frame, width=entry_widths[col], justify="center")
                 entry.insert(0, item["measured"])
                 entry.grid(row=row, column=col, sticky="nsew")
@@ -161,20 +172,6 @@ class PDFInspectorApp:
         
         if current_row < len(self.detection_items) - 1:
             self.focus_cell(current_row + 1, current_col)
-
-    def handle_right(self, event):
-        """向右箭头处理：同行下一个单元格"""
-        current_row = self.get_current_row(event)
-        current_col = self.get_current_column(event)
-        
-        if current_col < 4:  # 允许移动到列4（索引从0开始）
-            self.focus_cell(current_row, current_col + 1)
-        elif current_row < len(self.detection_items) - 1:
-            self.focus_cell(current_row + 1, 2)  # 换行到下一行首列
-
-    def handle_tab(self, event):
-        """Tab键处理：与右方向键逻辑一致"""
-        self.handle_right(event)
 
     def select_row(self, row_index):
         """选择行并更新PDF显示"""
@@ -205,7 +202,7 @@ class PDFInspectorApp:
         current_row = self.get_current_row(event)
         current_col = self.get_current_column(event)
         
-        if current_col < 4:
+        if current_col < 7:
             self.focus_cell(current_row, current_col + 1)
         else:
             self.focus_cell(current_row + 1, 2)  # 换行到下一行首列
@@ -225,7 +222,7 @@ class PDFInspectorApp:
         current_row = self.get_current_row(event)
         current_col = self.get_current_column(event)
         
-        if current_col < 4:  # 最大列索引是4
+        if current_col < 7:  # 最大列索引是4
             self.focus_cell(current_row, current_col + 1)
         else:
             self.focus_cell(current_row + 1, 2)  # 换行到下一行首列
@@ -248,16 +245,78 @@ class PDFInspectorApp:
                 child.focus_set()
                 break
 
-    def upload_pdf(self):
-        """上传PDF文件"""
-        file_path = filedialog.askopenfilename(filetypes=[("PDF文件", "*.pdf")])
-        if file_path:
-            self.pdf_path = file_path
+    def fetch_pdf(self):
+        """通过接口获取PDF"""
+        part_number = self.part_number_entry.get().strip()
+        if not part_number:
+            tk.messagebox.showerror("错误", "请输入零件号")
+            return
+        
+        try:
+            # 接口请求头（根据实际接口调整）
+            headers = {
+                'authorization': 'Bearer 2c3e37de-3c7d-42eb-8418-86a55059055e',
+                'platform-id': '1689154431733325826',
+                'tenant-id': '1660451255092543490',
+                'content-type': 'application/json;charset=UTF-8'
+            }
+            
+            # 请求参数（根据实际接口调整）
+            payload = {
+                "templateId": "1737101682450153472",
+                "current": 1,
+                "size": 10,
+                "queryFieldList": [{
+                    "fieldName": "seq_id",
+                    "fieldValue": part_number,
+                    "operType": "fuzzy"
+                }]
+            }
+            
+            # 发送POST请求
+            response = requests.post(
+                'https://tp.cewaycloud.com/fd/formInstance/page',
+                headers=headers,
+                json=payload
+            )
+            response.raise_for_status()
+            
+            # 解析响应获取PDF链接（修改这部分）
+            data = response.json()
+            print(data)
+            if data['code'] != 0 or not data['data']['records']:
+                raise ValueError("未找到相关PDF文档")
+            
+            # 解析JSON字符串获取文件信息
+            up_mod = data['data']['records'][0]['up_mod']
+            file_info = json.loads(up_mod)[0]  # 解析JSON数组
+            
+            # 获取原始文件名和文件路径
+            original_filename = file_info['originalFileName']  # 新增字段获取
+            file_path = file_info['fileName']
+            
+            # 拼接完整下载地址
+            pdf_url = f"https://tp.cewaycloud.com{file_path}"
+            
+            # 下载PDF到临时文件
+            pdf_response = requests.get(pdf_url)
+            pdf_response.raise_for_status()
+            
+            # 保存到临时文件
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                tmp_file.write(pdf_response.content)
+                self.pdf_path = tmp_file.name
+            
+            # 处理PDF
             self.process_pdf()
             self.create_data_rows()
             self.show_page()
-            # 修改为仅显示文件名
-            self.filename_label.config(text=f"当前文件: {os.path.basename(self.pdf_path)}")  # 修改行
+            self.filename_label.config(text=f"当前文件: {original_filename}")
+            
+        except Exception as e:
+            tk.messagebox.showerror("错误", f"获取PDF失败: {str(e)}")
+            self.pdf_path = ""
+
 
     def process_pdf(self):
         """处理PDF文件"""
@@ -347,8 +406,7 @@ class PDFInspectorApp:
             data = [
                 {
                     "序号": "文件名",
-                    # 修改为仅显示文件名
-                    "检测值": os.path.basename(self.pdf_path),  # 修改行
+                    "检测值": getattr(self, 'original_filename', '未命名文件'),  # 修改行
                     "实测值1": "",
                     "实测值2": "",
                     "实测值3": ""
@@ -358,6 +416,9 @@ class PDFInspectorApp:
                 measured1 = self.grid_frame.grid_slaves(row=idx+1, column=2)[0].get()
                 measured2 = self.grid_frame.grid_slaves(row=idx+1, column=3)[0].get()
                 measured3 = self.grid_frame.grid_slaves(row=idx+1, column=4)[0].get()
+                measured4 = self.grid_frame.grid_slaves(row=idx+1, column=5)[0].get()
+                measured5 = self.grid_frame.grid_slaves(row=idx+1, column=6)[0].get()
+                measured6 = self.grid_frame.grid_slaves(row=idx+1, column=7)[0].get()
                 
                 # 添加检测数据
                 data.append({
@@ -365,7 +426,10 @@ class PDFInspectorApp:
                     "检测值": item["text"],
                     "实测值1": measured1,
                     "实测值2": measured2,
-                    "实测值3": measured3
+                    "实测值3": measured3,
+                    "实测值4": measured4,
+                    "实测值5": measured5,
+                    "实测值6": measured6
                 })
             
             pd.DataFrame(data).to_excel(file_path, index=False)
