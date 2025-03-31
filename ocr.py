@@ -23,7 +23,8 @@ class PDFInspectorApp:
         self.root = root
         self.root.title("PDF检测项分析系统")
         self.root.attributes('-fullscreen', True)  # 设置为全屏模式
-        
+        self.page_cache = {}  # 新增页面缓存 {(page_num, zoom_level): pixmap}
+        self.current_pixmap = None  # 新增当前渲染对象
         # 新增全屏切换快捷键（ESC键退出全屏）
         self.root.bind("<Escape>", self.toggle_fullscreen)
 
@@ -47,19 +48,28 @@ class PDFInspectorApp:
         """创建界面布局"""
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # 左侧数据面板（设置最小宽度）
-        left_panel = ttk.Frame(main_frame, width=630)  # 初始宽度设为800像素
-        left_panel.pack_propagate(False)  # 禁止自动收缩
-        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, padx=2, pady=2)
-
+        
+        # 左侧数据面板
+        self.left_panel = ttk.Frame(main_frame, width=630)
+        self.left_panel.pack_propagate(False)
+        self.left_panel.pack(side=tk.LEFT, fill=tk.BOTH, padx=2, pady=2)
+        self.create_data_grid(self.left_panel)  # 新增：初始化左侧数据表格
+        
         # 右侧PDF面板
-        right_panel = ttk.Frame(main_frame)
-        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=2, pady=5)
+        self.right_panel = ttk.Frame(main_frame)
+        self.right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=2, pady=5)
+        self.create_pdf_viewer(self.right_panel)  # 新增：初始化右侧PDF查看器
+        
+        # 绑定窗口大小变化事件
+        self.root.bind("<Configure>", self.on_window_resize)
 
-        # 创建控件
-        self.create_data_grid(left_panel)
-        self.create_pdf_viewer(right_panel)
+    def on_window_resize(self, event):
+        """窗口大小变化时的自适应布局"""
+        # 保持左侧面板固定宽度，右侧自适应
+        self.left_panel.config(width=630)  # 固定左侧宽度为630像素
+        # 强制更新Canvas尺寸
+        self.pdf_canvas.config(width=self.right_panel.winfo_width(),
+                              height=self.right_panel.winfo_height())
 
     # 在 create_data_grid 方法中修改列配置
     def create_data_grid(self, parent):
@@ -306,7 +316,8 @@ class PDFInspectorApp:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
                 tmp_file.write(pdf_response.content)
                 self.pdf_path = tmp_file.name
-            
+            self.page_cache.clear()
+            self.process_pdf()
             # 处理PDF
             self.process_pdf()
             self.create_data_rows()
@@ -344,27 +355,41 @@ class PDFInspectorApp:
             doc.close()
 
     def show_page(self):
-        """显示当前页PDF"""
+        """显示当前页PDF（带缓存版本）"""
         if not self.pdf_path:
             return
-            
-        doc = fitz.open(self.pdf_path)
-        try:
-            page = doc.load_page(self.current_page)
-            zoom_matrix = fitz.Matrix(self.zoom_level, self.zoom_level)
-            pix = page.get_pixmap(matrix=zoom_matrix)
-            img = Image.open(io.BytesIO(pix.tobytes()))
-            img = self.add_annotations(img, page)
-            
-            # 更新为pdf_canvas（关键修复）
-            self.tk_img = ImageTk.PhotoImage(img)
-            self.pdf_canvas.delete("all")  # 清空旧内容
-            self.pdf_canvas.config(scrollregion=(0, 0, img.width, img.height))  # 设置滚动区域
-            self.pdf_canvas.create_image(0, 0, anchor=tk.NW, image=self.tk_img)
-        finally:
-            doc.close()
 
-    def add_annotations(self, img, page):
+        cache_key = (self.current_page, round(self.zoom_level, 2))
+
+        # 检查缓存
+        if cache_key in self.page_cache:
+            pix = self.page_cache[cache_key]
+        else:
+            doc = fitz.open(self.pdf_path)
+            try:
+                page = doc.load_page(self.current_page)
+                zoom_matrix = fitz.Matrix(self.zoom_level, self.zoom_level)
+                pix = page.get_pixmap(matrix=zoom_matrix)
+                self.page_cache[cache_key] = pix  # 存入缓存
+            finally:
+                doc.close()
+
+        # 转换图像并添加标注
+        img = Image.open(io.BytesIO(pix.tobytes()))
+        img = self.add_annotations(img, page=None)  # 不再需要传page参数
+        
+        # 更新显示
+        self.tk_img = ImageTk.PhotoImage(img)
+        self.pdf_canvas.delete("all")
+        self.pdf_canvas.config(scrollregion=(0, 0, img.width, img.height))
+        self.pdf_canvas.create_image(0, 0, anchor=tk.NW, image=self.tk_img)
+        
+        # 清理过期的缓存（保留最近3个缩放级别）
+        if len(self.page_cache) > 3:
+            oldest_key = next(iter(self.page_cache))
+            del self.page_cache[oldest_key]
+
+    def add_annotations(self, img, page=None):
         """添加标注框"""
         draw = ImageDraw.Draw(img)
         current_items = [item for item in self.detection_items 
