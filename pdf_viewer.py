@@ -1,0 +1,69 @@
+'''
+Date: 2025-03-31 16:32:36
+LastEditors: Zfj
+LastEditTime: 2025-03-31 16:38:51
+FilePath: /python-ocr/pdf_viewer.py
+Description: PDF查看器相关功能
+'''
+import tkinter as tk
+from tkinter import ttk
+from PIL import Image, ImageTk
+import io
+
+class PDFViewer:
+    def __init__(self, app):
+        self.app = app
+        self.frame = None
+        self.pdf_canvas = None
+        self.zoom_scale = None
+        self.tk_img = None
+    
+    def create_widgets(self, parent):
+        """创建PDF查看器界面"""
+        self.frame = ttk.Frame(parent)
+        self.frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=2, pady=5)
+        
+        self.pdf_canvas = tk.Canvas(self.frame, bg='white')
+        self.pdf_canvas.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.zoom_scale = ttk.Scale(self.frame, from_=0.5, to=2.0, value=1.0,
+                                  command=self.update_zoom)
+        self.zoom_scale.pack(fill=tk.X, padx=5, pady=5)
+    
+    def on_window_resize(self):
+        """窗口大小变化时的处理"""
+        if self.pdf_canvas:
+            self.pdf_canvas.config(width=self.frame.winfo_width(),
+                                 height=self.frame.winfo_height())
+    
+    def show_page(self):
+        """显示当前页PDF"""
+        if not self.app.pdf_path:
+            return
+        
+        pix = self.app.pdf_processor.render_page(
+            self.app.pdf_path,
+            self.app.current_page,
+            self.app.zoom_level
+        )
+        
+        # 转换图像并添加标注
+        img = Image.open(io.BytesIO(pix.tobytes()))
+        img = self.app.pdf_processor.add_annotations(
+            img,
+            self.app.detection_items,
+            self.app.current_page,
+            self.app.selected_index,
+            self.app.zoom_level
+        )
+        
+        # 更新显示
+        self.tk_img = ImageTk.PhotoImage(img)
+        self.pdf_canvas.delete("all")
+        self.pdf_canvas.config(scrollregion=(0, 0, img.width, img.height))
+        self.pdf_canvas.create_image(0, 0, anchor=tk.NW, image=self.tk_img)
+    
+    def update_zoom(self, value):
+        """更新缩放级别"""
+        self.app.zoom_level = float(value)
+        self.show_page()
