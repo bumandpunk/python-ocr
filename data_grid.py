@@ -127,7 +127,7 @@ class DataGrid:
     def _create_row(self, row, item):
         """创建单行数据"""
         # 修改序号计算方式 - 使用行号减2作为序号（因为表头占用了前两行）
-        ttk.Label(self.grid_frame, text=str(row-1), width=4, anchor="center",
+        ttk.Label(self.grid_frame, text=str(row-2), width=4, anchor="center",
                 relief="solid").grid(row=row, column=0, sticky="nsew")
         
         # 检测值 (仅新增行可编辑)
@@ -144,8 +144,9 @@ class DataGrid:
             entry = ttk.Entry(self.grid_frame, width=8, justify="center")
             entry.insert(0, item["measured"])
             entry.grid(row=row, column=col, sticky="nsew")
+            # 修改行号计算方式，使用row-2作为索引
             entry.bind("<FocusIn>", lambda e, r=row-2: self.select_row(r))
-            entry.bind("<Return>", self.handle_enter)
+            entry.bind("<Return>", lambda e, r=row-2: self.handle_enter(e))
             entry.bind("<Tab>", self.handle_tab)
             entry.bind("<Down>", self.handle_down)
             entry.bind("<Right>", self.handle_right)
@@ -347,12 +348,26 @@ class DataGrid:
     
     def handle_enter(self, event):
         """回车键处理"""
-        current_row = self.get_current_row(event)
-        current_col = self.get_current_column(event)
+        widget = event.widget
+        info = widget.grid_info()
+        current_row = int(info["row"]) - 2  # 直接通过事件源组件获取行号
+        current_col = int(info["column"])
         
-        if current_row < len(self.app.detection_items) - 1:
-            self.focus_cell(current_row + 1, current_col)
-    
+        if not self.app.detection_items:  # 空数据检查
+            return
+            
+        # 移动到下一行相同列（保持列位置）
+        next_row = min(current_row + 1, len(self.app.detection_items) - 1)
+        next_col = current_col  # 保持当前列
+        
+        # 强制列号在有效范围内（实测值列）
+        next_col = max(2, min(next_col, 7))
+        
+        self.focus_cell(next_row, next_col)
+        
+        # 阻止默认行为(避免触发其他事件)
+        return "break"
+
     def handle_tab(self, event):
         """Tab键处理"""
         current_row = self.get_current_row(event)
@@ -414,15 +429,30 @@ class DataGrid:
     
     def focus_cell(self, row, col):
         """聚焦指定单元格"""
-        if row >= len(self.app.detection_items):
+        if row >= len(self.app.detection_items) or row < 0:
             return
             
-        children = self.grid_frame.children
-        for child in children.values():
-            info = child.grid_info()
-            if int(info["row"]) == row+2 and int(info["column"]) == col:
-                child.focus_set()
-                break
+        # 修正列号范围（2-7列是实测值输入框）
+        col = max(2, min(col, 7))  # 强制列号在有效范围内
+        
+        # 修正行号计算（表头占2行，数据行从row=2开始）
+        target_row = row + 2
+        
+        # 优化组件遍历顺序（后创建的组件在前）
+        for widget in reversed(self.grid_frame.winfo_children()):
+            info = widget.grid_info()
+            if not info:  # 跳过没有grid信息的组件
+                continue
+                
+            widget_row = int(info["row"])
+            widget_col = int(info["column"])
+            
+            if widget_row == target_row and widget_col == col:
+                if isinstance(widget, ttk.Entry): 
+                    widget.focus_force()  # 强制聚焦
+                    widget.select_range(0, tk.END)
+                    widget.icursor(tk.END)
+                    return
     
     def get_table_data(self):
         """获取表格数据"""
