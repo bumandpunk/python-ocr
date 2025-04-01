@@ -17,6 +17,7 @@ class PDFViewer:
         self.pdf_canvas = None
         self.zoom_scale = None
         self.tk_img = None
+        self._pending_show_page = None  # 新增防抖标志
     
     def create_widgets(self, parent):
         """创建PDF查看器界面"""
@@ -33,11 +34,24 @@ class PDFViewer:
     def on_window_resize(self):
         """窗口大小变化时的处理"""
         if self.pdf_canvas:
-            self.pdf_canvas.config(width=self.frame.winfo_width(),
-                                 height=self.frame.winfo_height())
+            self.pdf_canvas.config(
+                width=self.frame.winfo_width(),
+                height=self.frame.winfo_height()
+            )
+            # 窗口大小变化后重新居中显示
+            if hasattr(self.app, 'selected_index') and self.app.selected_index >= 0:
+                self.show_page()
     
     def show_page(self):
-        """显示当前页PDF"""
+        """显示当前页PDF（带防抖）"""
+        if self._pending_show_page:
+            self.frame.after_cancel(self._pending_show_page)
+        
+        self._pending_show_page = self.frame.after(100, self._real_show_page)
+    
+    def _real_show_page(self):
+        """实际的页面渲染逻辑"""
+        self._pending_show_page = None
         if not self.app.pdf_path:
             return
         
@@ -53,17 +67,40 @@ class PDFViewer:
             img,
             self.app.detection_items,
             self.app.current_page,
-            self.app.selected_index,
+            self.app.selected_index,  # 传递选中索引
             self.app.zoom_level
         )
         
         # 更新显示
         self.tk_img = ImageTk.PhotoImage(img)
         self.pdf_canvas.delete("all")
-        self.pdf_canvas.config(scrollregion=(0, 0, img.width, img.height))
+        
+        # 计算居中位置
+        canvas_width = self.pdf_canvas.winfo_width()
+        canvas_height = self.pdf_canvas.winfo_height()
+        img_width, img_height = img.size
+        
+        # 自动滚动到选中区域
+        if self.app.selected_index >= 0:
+            item = self.app.detection_items[self.app.selected_index]
+            if "coordinates" in item:
+                x1, y1, x2, y2 = item["coordinates"]
+                center_x = (x1 + x2) / 2 * self.app.zoom_level
+                center_y = (y1 + y2) / 2 * self.app.zoom_level
+                
+                # 计算滚动位置使高亮区域居中
+                scroll_x = max(0, center_x - canvas_width / 2)
+                scroll_y = max(0, center_y - canvas_height / 2)
+                
+                # 设置滚动区域并定位
+                self.pdf_canvas.config(scrollregion=(0, 0, img_width, img_height))
+                self.pdf_canvas.xview_moveto(scroll_x / img_width)
+                self.pdf_canvas.yview_moveto(scroll_y / img_height)
         self.pdf_canvas.create_image(0, 0, anchor=tk.NW, image=self.tk_img)
     
     def update_zoom(self, value):
         """更新缩放级别"""
         self.app.zoom_level = float(value)
+        # 清除缓存强制重新渲染
+        self.app.pdf_processor.page_cache.clear()
         self.show_page()

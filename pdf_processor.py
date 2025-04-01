@@ -1,7 +1,7 @@
 '''
 Date: 2025-03-31 16:30:52
 LastEditors: Zfj
-LastEditTime: 2025-03-31 16:38:08
+LastEditTime: 2025-04-01 09:48:58
 FilePath: /python-ocr/pdf_processor.py
 Description: PDF处理相关功能
 '''
@@ -21,6 +21,7 @@ class PDFProcessor:
             tmp_file.write(pdf_data)
             return tmp_file.name
     
+    # 在process_pdf方法中确保提取坐标
     def process_pdf(self, pdf_path):
         """处理PDF文件并提取检测项"""
         detection_items = []
@@ -46,8 +47,15 @@ class PDFProcessor:
         return detection_items
     
     def render_page(self, pdf_path, page_num, zoom_level):
-        """渲染PDF页面"""
-        cache_key = (page_num, round(zoom_level, 2))
+        """渲染PDF页面（带缓存优化）"""
+        import threading
+        if not hasattr(self, '_render_thread'):
+            self._render_thread = threading.Thread(
+                target=self._render_page_async,  # 现在这个方法已定义
+                args=(pdf_path, page_num, zoom_level)
+            )
+            self._render_thread.start()
+        cache_key = (pdf_path, page_num, round(zoom_level, 2))
         
         if cache_key in self.page_cache:
             return self.page_cache[cache_key]
@@ -61,6 +69,14 @@ class PDFProcessor:
             return pix
         finally:
             doc.close()
+
+    # 如果需要异步渲染，可以添加这个方法
+    def _render_page_async(self, pdf_path, page_num, zoom_level):
+        """异步渲染PDF页面"""
+        try:
+            self.render_page(pdf_path, page_num, zoom_level)
+        except Exception as e:
+            print(f"异步渲染失败: {e}")
     
     def add_annotations(self, img, items, current_page, selected_index, zoom_level):
         """添加标注到图像"""

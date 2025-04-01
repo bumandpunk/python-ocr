@@ -1,7 +1,7 @@
 '''
 Date: 2025-03-31 16:32:48
 LastEditors: Zfj
-LastEditTime: 2025-03-31 16:38:57
+LastEditTime: 2025-04-01 10:01:54
 FilePath: /python-ocr/api_client.py
 Description: API客户端功能
 '''
@@ -63,7 +63,7 @@ class APIClient:
         """上传检测数据"""
         try:
             payload = {
-                "shipment_quantity": 0,
+                "shipment_quantity": table_data["shipment_quantity"],
                 "select_part": "1906612977607086080",
                 "customer_name": "",
                 "product_name": table_data['filename'],
