@@ -1,7 +1,7 @@
 '''
 Date: 2025-03-31 16:32:48
 LastEditors: Zfj
-LastEditTime: 2025-04-01 13:50:02
+LastEditTime: 2025-04-01 15:53:04
 FilePath: /python-ocr/api_client.py
 Description: API客户端功能
 '''
@@ -11,15 +11,47 @@ import json
 import tkinter.messagebox as messagebox
 
 class APIClient:
+    access_token = None  # 新增类变量
+    
     def __init__(self):
         self.base_url = "https://tp.cewaycloud.com"
         self.headers = {
-            'authorization': 'Bearer 2c3e37de-3c7d-42eb-8418-86a55059055e',
+            'authorization': f'Bearer {APIClient.access_token}',  # 使用类变量
             'platform-id': '1689154431733325826',
             'tenant-id': '1660451255092543490',
             'content-type': 'application/json;charset=UTF-8'
         }
+    def btoa(text):
+        return base64.b64encode(text.encode('utf-8')).decode('utf-8')
     
+    @classmethod
+    def fetch_token(cls, username, password):
+        import base64
+        
+        # 添加缺失的URL定义
+        url = 'https://tp.cewaycloud.com/auth/oauth/token?randomStr=blockPuzzle&code=&grant_type=password'
+        
+        auth_str = base64.b64encode(b'social:social').decode('utf-8')
+        headers = {
+            'accept': 'application/json',
+            'authorization': f"Basic {auth_str}",
+            'content-type': 'application/x-www-form-urlencoded',
+            'platform-id': '1689154431733325826',
+            'tenant-id': '1660451255092543490'
+        }
+        data = {
+            'username': username,
+            'password': password
+        }
+        response = requests.post(url, headers=headers, data=data)
+        if response.status_code == 200:
+            # 将token存入类变量
+            cls.access_token = response.json()['access_token']
+            return cls.access_token
+        
+        else:
+            print('Error fetching token:', response.text)
+            return None
     def fetch_pdf(self, part_number):
         """获取PDF文件"""
         payload = {
