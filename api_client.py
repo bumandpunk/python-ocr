@@ -58,3 +58,44 @@ class APIClient:
         pdf_response.raise_for_status()
         
         return pdf_response.content, original_filename
+    
+    def upload_inspection_data(self, table_data):
+        """上传检测数据"""
+        try:
+            payload = {
+                "shipment_quantity": 0,
+                "select_part": "1906612977607086080",
+                "customer_name": "",
+                "product_name": table_data['filename'],
+                "drawing_number": "",
+                "material_name": "",
+                "project_number": "",
+                "standard": "",
+                "inspection_date": "2025-03-31",
+                "visual_inspection": [],
+                "a174340265468111707": [
+                    {
+                        "testing_method": "全检",
+                        "inspection_items": item["检测值"],
+                        "measuring_instrument": "DC",
+                        "test_result_1": item["实测值1"],
+                        "test_result_2": item["实测值2"],
+                        "test_result_3": item["实测值3"],
+                        "test_result_4": item["实测值4"],
+                        "test_result_5": item["实测值5"],
+                        "test_result_6": item["实测值6"],
+                        "test_result": "通过" if all(v == item["实测值1"] for v in [item["实测值1"], item["实测值2"], item["实测值3"]]) else "不通过"
+                    } for item in table_data['data']
+                ],
+                "templateId": "1905622813184503808"
+            }
+            
+            response = requests.post(
+                f'{self.base_url}/fd/formInstance',
+                headers=self.headers,
+                json=payload
+            )
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            raise Exception(f"上传失败: {str(e)}")
