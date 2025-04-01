@@ -54,24 +54,31 @@ class PDFViewer:
         self._pending_show_page = None
         if not self.app.pdf_path:
             return
-        
+            
+        # 新增：同步当前选中索引有效性检查
+        if self.app.selected_index >= len(self.app.detection_items):
+            self.app.selected_index = -1
+            
         pix = self.app.pdf_processor.render_page(
             self.app.pdf_path,
             self.app.current_page,
             self.app.zoom_level
         )
         
-        # 转换图像并添加标注
+        # 转换基础图像
         img = Image.open(io.BytesIO(pix.tobytes()))
-        img = self.app.pdf_processor.add_annotations(
-            img,
-            self.app.detection_items,
-            self.app.current_page,
-            self.app.selected_index,  # 传递选中索引
-            self.app.zoom_level
-        )
         
-        # 更新显示
+        # 仅在有效索引时添加标注
+        if 0 <= self.app.selected_index < len(self.app.detection_items):
+            img = self.app.pdf_processor.add_annotations(
+                img,
+                self.app.detection_items,
+                self.app.current_page,
+                self.app.selected_index,
+                self.app.zoom_level
+            )
+
+        # 更新显示（始终渲染基础PDF）
         self.tk_img = ImageTk.PhotoImage(img)
         self.pdf_canvas.delete("all")
         
@@ -80,8 +87,13 @@ class PDFViewer:
         canvas_height = self.pdf_canvas.winfo_height()
         img_width, img_height = img.size
         
-        # 自动滚动到选中区域
-        if self.app.selected_index >= 0:
+        # 自动滚动到选中区域前添加二次校验
+        valid_selection = (
+            self.app.selected_index >= 0 and 
+            self.app.selected_index < len(self.app.detection_items) and 
+            "coordinates" in self.app.detection_items[self.app.selected_index]
+        )
+        if valid_selection:
             item = self.app.detection_items[self.app.selected_index]
             if "coordinates" in item:
                 x1, y1, x2, y2 = item["coordinates"]
@@ -104,3 +116,12 @@ class PDFViewer:
         # 清除缓存强制重新渲染
         self.app.pdf_processor.page_cache.clear()
         self.show_page()
+    
+    def clear_page(self):
+        """清除PDF显示（使用正确的canvas引用）"""
+        if hasattr(self, 'pdf_canvas'):  # 使用实际存在的属性名
+            self.pdf_canvas.delete("all")
+        self.current_page = 0
+        self.pdf_images = []
+        if hasattr(self, '_pdf_document'):
+            del self._pdf_document

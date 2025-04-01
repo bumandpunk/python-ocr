@@ -1,7 +1,7 @@
 '''
 Date: 2025-03-31 16:32:48
 LastEditors: Zfj
-LastEditTime: 2025-04-01 10:01:54
+LastEditTime: 2025-04-01 13:50:02
 FilePath: /python-ocr/api_client.py
 Description: API客户端功能
 '''
@@ -64,15 +64,7 @@ class APIClient:
         try:
             payload = {
                 "shipment_quantity": table_data["shipment_quantity"],
-                "select_part": "1906612977607086080",
-                "customer_name": "",
-                "product_name": table_data['filename'],
-                "drawing_number": "",
-                "material_name": "",
-                "project_number": "",
-                "standard": "",
-                "inspection_date": "2025-03-31",
-                "visual_inspection": [],
+                "part_no":table_data["part_no"],
                 "a174340265468111707": [
                     {
                         "testing_method": "全检",
@@ -84,8 +76,8 @@ class APIClient:
                         "test_result_4": item["实测值4"],
                         "test_result_5": item["实测值5"],
                         "test_result_6": item["实测值6"],
-                        "test_result": "通过" if all(v == item["实测值1"] for v in [item["实测值1"], item["实测值2"], item["实测值3"]]) else "不通过"
-                    } for item in table_data['data']
+                        "test_result": "通过" 
+                    } for item in table_data['items']
                 ],
                 "templateId": "1905622813184503808"
             }

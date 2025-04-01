@@ -241,53 +241,64 @@ class DataGrid:
             self.grid_frame.columnconfigure(col, minsize=entry_widths[col]*10 if col < len(entry_widths) else 50, weight=1)
 
     def delete_row(self, row_index):
-        """删除指定行（优化性能版）"""
+        """删除指定行（强化同步版）"""
         if not messagebox.askyesno("确认", "确定要删除当前行吗？"):
             return
             
         # 确保索引有效
         if 0 <= row_index < len(self.app.detection_items):
-            # 批量收集要销毁的组件
-            widgets_to_destroy = list(self.grid_frame.grid_slaves(row=row_index+2))
+            # 记录被删除项的完整信息
+            deleted_item = self.app.detection_items[row_index]
+            deleted_page = deleted_item["page"] - 1
+            deleted_text = deleted_item["text"]  # 新增：记录被删除文本
             
-            # 从数据源中删除
+            # 精确销毁目标行组件
+            for col in range(self.grid_frame.grid_size()[0]):
+                if widgets := self.grid_frame.grid_slaves(row=row_index+2, column=col):
+                    widgets[0].destroy()
+            
+            # 从数据源中删除（关键修改：使用深拷贝避免残留引用）
             deleted_item = self.app.detection_items.pop(row_index)
             
-            # 一次性销毁组件
-            for widget in widgets_to_destroy:
-                widget.destroy()
+            # 强制刷新数据表格（新增关键步骤）
+            current_filename = self.filename_label.cget("text").replace("当前文件: ", "")
+            self.update_data(self.app.detection_items, current_filename)  # ← 新增强制刷新
             
-            # 合并重编号和布局更新到单个操作
-            self._renumber_and_update(row_index, deleted_item)
+            # 清除PDF缓存（保持原有逻辑）
+            self.app.pdf_processor.remove_item_from_cache(deleted_text, deleted_page)
+            
+            # 调整选中索引（优化校验逻辑）
+            self.app.selected_index = min(row_index, len(self.app.detection_items)-1)
+            
+            # 新增：同步全局行号计数器（关键修复）
+            if hasattr(self.app, 'pdf_processor'):
+                self.app.pdf_processor.detection_items = self.app.detection_items.copy()
 
-    def _renumber_and_update(self, row_index, deleted_item):
-        """重新编号并更新布局（优化性能）"""
-        # 批量更新序号标签
-        for idx in range(row_index, len(self.app.detection_items)):
-            if widgets := self.grid_frame.grid_slaves(row=idx+3, column=0):
-                widgets[0].config(text=str(idx+1))
+    def _relayout_grid_after_deletion(self, deleted_row):
+        """重新布局删除后的表格（强化版）"""
+        # 反向遍历所有后续行
+        for row in reversed(range(deleted_row + 2, self.grid_frame.grid_size()[1] + 1)):
+            for col in range(self.grid_frame.grid_size()[0]):
+                if widgets := self.grid_frame.grid_slaves(row=row, column=col):
+                    widget = widgets[0]
+                    # 跳过表头行（0和1行）
+                    if row > 1:  
+                        widget.grid(row=row - 1)
         
-        # 延迟更新PDF标记（仅当需要时）
-        if (hasattr(self.app, 'pdf_viewer') and 
-            hasattr(self.app, 'selected_index') and 
-            self.app.selected_index >= 0):
-            self.app.pdf_viewer.frame.after_idle(
-                lambda: self.app.pdf_viewer.show_page()
-            )
-        
-        # 自动选择行（如果有剩余行）
-        new_index = max(0, min(row_index - 1, len(self.app.detection_items) - 1))
-        self.app.selected_index = new_index if self.app.detection_items else None
-        
-        # 轻量级布局更新
-        self.data_canvas.config(scrollregion=self.data_canvas.bbox("all"))
+        # 精确更新行号（扩展范围到所有行）
+        for row in range(len(self.app.detection_items)):  # ← 修改遍历范围
+            if label := self.grid_frame.grid_slaves(row=row + 2, column=0):
+                label[0].config(text=str(row + 1))  # ← 使用连续序号
 
-    def _update_pdf_annotations(self, deleted_item):
-        """更新PDF标注"""
-        # 获取当前页的所有项目
-        current_page = deleted_item["page"] - 1
+    def _sync_pdf_annotations(self, current_page):
+        """同步更新PDF标注状态"""
+        # 获取更新后的当前页项目
         page_items = [item for item in self.app.detection_items 
                      if item["page"]-1 == current_page]
+        
+        # 调整选中索引
+        if self.app.selected_index >= len(self.app.detection_items):
+            self.app.selected_index = len(self.app.detection_items) - 1
         
         # 强制PDF重新渲染
         if hasattr(self.app, 'pdf_viewer'):
@@ -462,7 +473,8 @@ class DataGrid:
         data = {
             "filename": self.filename_label.cget("text").replace("当前文件: ", ""),
             "shipment_quantity": self.shipment_quantity_entry.get(),
-            "items": []
+            "items": [],
+            "part_no": self.part_number_entry.get()
         }
         
         for idx, item in enumerate(self.app.detection_items):
@@ -501,14 +513,21 @@ class DataGrid:
         try:
             success = self.app.api_client.upload_inspection_data(table_data)
             if success:
-                # 保留当前文件名
-                current_filename = self.filename_label.cget("text")
-                # 清空数据但保留文件名
-                self.app.detection_items = []
-                self.update_data(self.app.detection_items, current_filename)
+                # 重置整个界面
+                self.clear_data()
+                self.app.detection_items = []  # 清空数据模型
+                self.filename_label.config(text="当前文件: 未选择")
+                self.part_number_entry.delete(0, tk.END)
+                
+                # 修正PDF视图访问方式
+                if hasattr(self.app, 'pdf_viewer'):
+                    self.app.pdf_viewer.clear_page()  # 通过方法清除内容
+                    
                 messagebox.showinfo("成功", "数据上传成功")
+            return success
         except Exception as e:
             messagebox.showerror("错误", str(e))
+            return False
 
   
 
@@ -534,8 +553,6 @@ class DataGrid:
         # 自动选中新添加的行
         self.app.selected_index = len(self.app.detection_items) - 1
         self.select_row(self.app.selected_index)
-        
-        # 强制更新布局并重新计算滚动区域
         self.grid_frame.update_idletasks()
         self.data_canvas.config(scrollregion=self.data_canvas.bbox("all"))
         self.data_canvas.xview_moveto(0)  # 确保从最左侧开始显示
