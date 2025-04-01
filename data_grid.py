@@ -10,6 +10,11 @@ class DataGrid:
         self.grid_frame = None
         self.part_number_entry = None
         self.filename_label = None
+        
+        # 添加按钮样式
+        style = ttk.Style()
+        style.configure("Bold.TButton", font=('Helvetica', 10, 'bold'), 
+                       foreground='blue')
     
     
     def create_widgets(self, parent):
@@ -33,7 +38,10 @@ class DataGrid:
         ttk.Label(toolbar, text="出货数量:").pack(side=tk.LEFT)
         self.shipment_quantity_entry = ttk.Entry(toolbar, width=8)
         self.shipment_quantity_entry.pack(side=tk.LEFT, padx=5)
-        ttk.Button(toolbar, text="上传数据", command=self.upload_data).pack(side=tk.LEFT, padx=5)
+        # 修改上传数据按钮样式并添加确认
+        upload_btn = ttk.Button(toolbar, text="上传数据", command=self._confirm_upload, 
+                              style="Bold.TButton")
+        upload_btn.pack(side=tk.LEFT, padx=5)
         
         # 删除导出Excel按钮
         
@@ -448,6 +456,11 @@ class DataGrid:
         
         return data
 
+    def _confirm_upload(self):
+        """上传数据确认"""
+        if messagebox.askyesno("确认", "确定要上传当前数据吗？"):
+            self.upload_data()
+    
     def upload_data(self):
         """上传表格数据"""
         table_data = self.get_table_data()
