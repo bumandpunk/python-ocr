@@ -1,7 +1,7 @@
 '''
 Date: 2025-03-31 16:30:29
 LastEditors: Zfj
-LastEditTime: 2025-03-31 16:37:58
+LastEditTime: 2025-04-02 10:00:09
 FilePath: /python-ocr/pdf_inspector.py
 Description: 主应用类
 '''
@@ -16,7 +16,7 @@ class PDFInspectorApp:
     def __init__(self, root, api_client=None):
         self.root = root
         self.api_client = api_client or APIClient()  # 允许传入或新建APIClient
-        self.root.title("PDF检测项分析系统")
+        self.root.title("戴德品检工作站系统")
         self.root.attributes('-fullscreen', True)
         
         # 初始化组件

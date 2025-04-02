@@ -6,7 +6,6 @@ venv/
 # 构建产物
 dist/
 build/
-*.spec
 *.exe
 *.app
 
