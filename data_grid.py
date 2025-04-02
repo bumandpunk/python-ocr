@@ -10,16 +10,17 @@ class DataGrid:
         self.grid_frame = None
         self.part_number_entry = None
         self.filename_label = None
+        self.loading_label = None  # 先声明为None
         
         # 添加按钮样式
         style = ttk.Style()
         style.configure("Bold.TButton", font=('Helvetica', 10, 'bold'), 
                        foreground='blue')
-    
+       
     
     def create_widgets(self, parent):
         """创建数据表格界面"""
-        self.frame = ttk.Frame(parent, width=760)  # 增加到800宽度
+        self.frame = ttk.Frame(parent, width=640)
         self.frame.pack_propagate(False)
         self.frame.pack(side=tk.LEFT, fill=tk.BOTH, padx=2, pady=2)
         
@@ -27,15 +28,18 @@ class DataGrid:
         toolbar = ttk.Frame(self.frame)
         toolbar.pack(fill=tk.X, pady=5)
         
-        ttk.Label(toolbar, text="零件号:").pack(side=tk.LEFT)
+        # 在这里初始化loading标签
+        self.loading_label = ttk.Label(toolbar, text="", foreground="red")
+        self.loading_label.pack(side=tk.LEFT, padx=5)
+        ttk.Label(toolbar, text="零件编号:").pack(side=tk.LEFT)
         self.part_number_entry = ttk.Entry(toolbar, width=15)
         self.part_number_entry.pack(side=tk.LEFT, padx=5)
         
-        ttk.Button(toolbar, text="获取PDF", command=self.app.fetch_pdf).pack(side=tk.LEFT)
+        ttk.Button(toolbar, text="获取PDF", command=self.fetch_pdf).pack(side=tk.LEFT)
         # 修改工具栏，移除之前的删除行和增加行按钮
         # 只保留上传数据按钮
         ttk.Button(toolbar, text="增加行", command=self.add_row).pack(side=tk.LEFT, padx=5)
-        ttk.Label(toolbar, text="出货数量:").pack(side=tk.LEFT)
+        ttk.Label(toolbar, text="出货分包数量:").pack(side=tk.LEFT)
         self.shipment_quantity_entry = ttk.Entry(toolbar, width=8)
         self.shipment_quantity_entry.pack(side=tk.LEFT, padx=5)
         # 修改上传数据按钮样式并添加确认
@@ -82,7 +86,7 @@ class DataGrid:
     
     def on_window_resize(self):
         """窗口大小变化时的处理"""
-        self.frame.config(width=750)
+        self.frame.config(width=630)
     
     def update_data(self, detection_items, filename):
         """增量更新数据表格"""
@@ -504,13 +508,14 @@ class DataGrid:
             self.upload_data()
     
     def upload_data(self):
-        """上传表格数据"""
-        table_data = self.get_table_data()
-        if table_data is None:
-            messagebox.showwarning("警告", "没有可上传的数据")
-            return
-        
+        """上传表格数据（带loading）"""
+        self.set_loading("正在上传数据...")
         try:
+            table_data = self.get_table_data()
+            if table_data is None:
+                messagebox.showwarning("警告", "没有可上传的数据")
+                return
+                
             success = self.app.api_client.upload_inspection_data(table_data)
             if success:
                 # 重置整个界面
@@ -527,7 +532,8 @@ class DataGrid:
             return success
         except Exception as e:
             messagebox.showerror("错误", str(e))
-            return False
+        finally:
+            self.clear_loading()
 
   
 
@@ -595,3 +601,31 @@ class DataGrid:
             widgets = self.grid_frame.grid_slaves(row=row_index+2, column=col)
             if widgets and isinstance(widgets[0], ttk.Entry):
                 item["measured"] = widgets[0].get()
+
+    def set_loading(self, message):
+        """设置加载状态"""
+        self.loading_label.config(text=message)
+        self.frame.update()  # 强制更新UI
+
+    def clear_loading(self):
+        """清除加载状态"""
+        self.loading_label.config(text="")
+
+    def fetch_pdf(self):
+        """获取PDF文件（带防抖和loading）"""
+        # 防抖检查
+        if hasattr(self, '_fetch_pending'):
+            self.frame.after_cancel(self._fetch_pending)
+        
+        def _real_fetch():
+            self.set_loading("正在获取PDF...")
+            try:
+                self.app.fetch_pdf()
+            finally:
+                self.clear_loading()
+                del self._fetch_pending
+        
+        # 设置300ms防抖
+        self._fetch_pending = self.frame.after(300, _real_fetch)
+
+   

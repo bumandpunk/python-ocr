@@ -10,10 +10,16 @@ from pdf_inspector import PDFInspectorApp
 from api_client import APIClient
 
 if __name__ == "__main__":
-    # 先获取token（示例账号密码，请替换为实际值）
-    APIClient.fetch_token("im0204", "JFat0Zdc")
+    # 获取token
+    token = APIClient.fetch_token("im0204", "JFat0Zdc")
+    if not token:
+        raise RuntimeError("获取token失败")
     
-    # 然后创建应用
+    # 创建并配置APIClient
+    api_client = APIClient()
+    APIClient.access_token = token  # 确保类变量被正确设置
+    
+    # 创建应用
     root = tk.Tk()
-    app = PDFInspectorApp(root)
+    app = PDFInspectorApp(root, api_client)
     root.mainloop()

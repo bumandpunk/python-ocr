@@ -1,7 +1,7 @@
 '''
 Date: 2025-03-31 16:32:48
 LastEditors: Zfj
-LastEditTime: 2025-04-01 15:53:04
+LastEditTime: 2025-04-02 09:46:34
 FilePath: /python-ocr/api_client.py
 Description: API客户端功能
 '''
@@ -13,14 +13,16 @@ import tkinter.messagebox as messagebox
 class APIClient:
     access_token = None  # 新增类变量
     
-    def __init__(self):
+    def __init__(self, app=None):
         self.base_url = "https://tp.cewaycloud.com"
         self.headers = {
-            'authorization': f'Bearer {APIClient.access_token}',  # 使用类变量
+            'Authorization': f'Bearer {APIClient.access_token}',
             'platform-id': '1689154431733325826',
             'tenant-id': '1660451255092543490',
-            'content-type': 'application/json;charset=UTF-8'
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
         }
+        self.app = app  # Store app reference
     def btoa(text):
         return base64.b64encode(text.encode('utf-8')).decode('utf-8')
     
@@ -94,32 +96,45 @@ class APIClient:
     def upload_inspection_data(self, table_data):
         """上传检测数据"""
         try:
-            payload = {
-                "shipment_quantity": table_data["shipment_quantity"],
-                "part_no":table_data["part_no"],
-                "a174340265468111707": [
-                    {
-                        "testing_method": "全检",
-                        "inspection_items": item["检测值"],
-                        "measuring_instrument": "DC",
-                        "test_result_1": item["实测值1"],
-                        "test_result_2": item["实测值2"],
-                        "test_result_3": item["实测值3"],
-                        "test_result_4": item["实测值4"],
-                        "test_result_5": item["实测值5"],
-                        "test_result_6": item["实测值6"],
-                        "test_result": "通过" 
-                    } for item in table_data['items']
-                ],
-                "templateId": "1905622813184503808"
-            }
+            # 处理shipment_quantity字段 - 同时支持中英文逗号
+            quantity_str = str(table_data["shipment_quantity"])
+            quantities = quantity_str.replace('，', ',').split(',')
             
-            response = requests.post(
-                f'{self.base_url}/fd/formInstance',
-                headers=self.headers,
-                json=payload
-            )
-            response.raise_for_status()
+            for i, quantity in enumerate(quantities):
+                # Safely check for loading label
+                if hasattr(self, 'app') and hasattr(self.app, 'data_grid'):
+                    self.app.data_grid.set_loading(f"正在上传...")
+                
+                payload = {
+                    "shipment_quantity": quantity.strip(),
+                    "part_no": table_data["part_no"],
+                    "a174340265468111707": [
+                        {
+                            "testing_method": "全检",
+                            "inspection_items": item["检测值"],
+                            "measuring_instrument": "DC",
+                            "test_result_1": item["实测值1"],
+                            "test_result_2": item["实测值2"],
+                            "test_result_3": item["实测值3"],
+                            "test_result_4": item["实测值4"],
+                            "test_result_5": item["实测值5"],
+                            "test_result_6": item["实测值6"],
+                            "test_result": "通过" 
+                        } for item in table_data['items']
+                    ],
+                    "templateId": "1905622813184503808"
+                }
+                
+                response = requests.post(
+                    f'{self.base_url}/fd/formInstance',
+                    headers=self.headers,
+                    json=payload
+                )
+                response.raise_for_status()
+                
             return True
         except Exception as e:
             raise Exception(f"上传失败: {str(e)}")
+        finally:
+            if hasattr(self, 'app') and hasattr(self.app, 'data_grid'):
+                self.app.data_grid.clear_loading()

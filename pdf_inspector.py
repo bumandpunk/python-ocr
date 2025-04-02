@@ -13,14 +13,18 @@ from pdf_viewer import PDFViewer
 from api_client import APIClient
 
 class PDFInspectorApp:
-    def __init__(self, root):
+    def __init__(self, root, api_client=None):
         self.root = root
+        self.api_client = api_client or APIClient()  # 允许传入或新建APIClient
         self.root.title("PDF检测项分析系统")
         self.root.attributes('-fullscreen', True)
         
         # 初始化组件
         self.pdf_processor = PDFProcessor()
-        self.api_client = APIClient()
+        # Where you initialize APIClient, change from:
+        # self.api_client = APIClient()
+        # To:
+        self.api_client = APIClient(self)  # Pass self reference
         self.data_grid = DataGrid(self)
         self.pdf_viewer = PDFViewer(self)
         
@@ -68,6 +72,7 @@ class PDFInspectorApp:
             return
         
         try:
+            self.data_grid.set_loading("正在获取PDF...")
             pdf_data, original_filename = self.api_client.fetch_pdf(part_number)
             self.pdf_path = self.pdf_processor.save_temp_pdf(pdf_data)
             self.detection_items = self.pdf_processor.process_pdf(self.pdf_path)
@@ -79,5 +84,7 @@ class PDFInspectorApp:
         except Exception as e:
             tk.messagebox.showerror("错误", f"获取PDF失败: {str(e)}")
             self.pdf_path = ""
+        finally:
+            self.data_grid.clear_loading()
     
     # 删除整个export_excel方法
