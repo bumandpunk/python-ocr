@@ -55,7 +55,37 @@ class APIClient:
             print('Error fetching token:', response.text)
             return None
     def fetch_pdf(self, part_number):
-        """获取PDF文件"""
+        """获取PDF文件（带token自动刷新）"""
+        try:
+            response = requests.post(
+                f'{self.base_url}/fd/formInstance/page',
+                headers=self.headers,
+                json=self._build_pdf_payload(part_number)
+            )
+            response.raise_for_status()
+            return self._process_pdf_response(response)
+            
+        except requests.HTTPError as e:
+            if e.response.status_code == 424:  # token过期
+                self._refresh_token()
+                # 重试请求
+                response = requests.post(
+                    f'{self.base_url}/fd/formInstance/page',
+                    headers=self.headers,
+                    json=self._build_pdf_payload(part_number)
+                )
+                response.raise_for_status()
+                return self._process_pdf_response(response)
+            raise
+    
+    def _refresh_token(self):
+        """刷新token"""
+        new_token = APIClient.fetch_token("im0199", "JFat0Zdc")
+        if not new_token:
+            raise RuntimeError("刷新token失败")
+        APIClient.access_token = new_token
+        self.headers['Authorization'] = f'Bearer {new_token}'
+        
         payload = {
             "templateId": "1737101682450153472",
             "current": 1,
@@ -138,3 +168,37 @@ class APIClient:
         finally:
             if hasattr(self, 'app') and hasattr(self.app, 'data_grid'):
                 self.app.data_grid.clear_loading()
+    
+    def _build_pdf_payload(self, part_number):
+        """构建获取PDF的请求payload"""
+        return {
+            "templateId": "1737101682450153472",
+            "current": 1,
+            "size": 10,
+            "queryFieldList": [{
+                "fieldName": "seq_id",
+                "fieldValue": part_number,
+                "operType": "fuzzy"
+            }]
+        }
+    
+    def _process_pdf_response(self, response):
+        """处理PDF响应"""
+        data = response.json()
+        if data['code'] != 0 or not data['data']['records']:
+            raise ValueError("未找到相关PDF文档")
+        
+        # 解析JSON字符串获取文件信息
+        up_mod = data['data']['records'][0]['up_mod']
+        file_info = json.loads(up_mod)[0]
+        
+        # 获取原始文件名和文件路径
+        original_filename = file_info['originalFileName']
+        file_path = file_info['fileName']
+        
+        # 下载PDF文件
+        pdf_url = f"{self.base_url}{file_path}"
+        pdf_response = requests.get(pdf_url)
+        pdf_response.raise_for_status()
+        
+        return pdf_response.content, original_filename
